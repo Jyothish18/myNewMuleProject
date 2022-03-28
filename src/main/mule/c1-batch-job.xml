@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:batch="http://www.mulesoft.org/schema/mule/batch"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="a1e27cb6-b8cb-4352-b843-9dea276b9acb" >
+		<db:my-sql-connection host="localhost" port="3306" user="root" password="Kohli@18189" />
+	</db:config>
+	<file:config name="File_Config" doc:name="File Config" doc:id="7600e882-ff6e-4385-8fd0-6bda52402a96" >
+		<file:connection workingDir="C:\jyothish\failed" />
+	</file:config>
+	<file:config name="File_Config1" doc:name="File Config" doc:id="1f6817a1-da12-4f75-9b7f-372929601c16" >
+		<file:connection workingDir="C:\jyothish\in" />
+	</file:config>
+	<flow name="c1-batch-jobFlow" doc:id="a9809d45-6d7f-45c6-ae6e-cc5bccf79470" >
+		<file:listener doc:name="On New or Updated File" doc:id="3ef63f08-b266-4762-831a-eca2628543f7" timeBetweenSizeCheck="1000" timeBetweenSizeCheckUnit="MILLISECONDS" autoDelete="true" moveToDirectory="C:\jyothish\backup" renameTo="#[vars.inputFileName]" config-ref="File_Config1">
+			<scheduling-strategy >
+				<fixed-frequency />
+			</scheduling-strategy>
+		</file:listener>
+		<set-variable value="#[attributes.fileName]" doc:name="Set Variable" doc:id="3616870b-77e3-4189-a38a-733a4e70d334" variableName="inputFileName"/>
+		<ee:transform doc:name="Transform Message" doc:id="d78a6c82-29e8-472e-bfb8-c24b0dee9ca0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload map(emp, indexOfEmp)->{
+	"name" : emp.Name,
+	"age" : emp.Age,
+	"sex" : emp.Sex,
+	"height" : emp.Height,
+	"weight" : emp.Weight
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<batch:job jobName="c1-batch-jobBatch_Job" doc:id="59bd95b6-b1aa-4f40-b9fd-efdd4a12130f" maxFailedRecords="-1">
+			<batch:process-records >
+				<batch:step name="Batch_Step" doc:id="30f43dce-ca42-46ea-9b3a-9bc8187ddbc1" >
+					<db:insert doc:name="Insert" doc:id="79b2bf9f-99bb-414c-b6f2-17b1e51800af" config-ref="Database_Config">
+						<db:sql ><![CDATA[insert into sg.emp_details(emp_name, emp_age, emp_sex, emp_height, emp_weight)values
+(:name, :age, :sex, :height, :weight )]]></db:sql>
+						<db:input-parameters ><![CDATA[#[payload]]]></db:input-parameters>
+					</db:insert>
+				</batch:step>
+				<batch:step name="Batch_Step1" doc:id="1a8ec60f-fd62-4212-b18a-17e69c968695" acceptPolicy="ONLY_FAILURES">
+					<batch:aggregator doc:name="Batch Aggregator" doc:id="5ccafdba-c22e-4c95-a56a-0e64a77320df" streaming="true">
+						<ee:transform doc:name="Transform Message" doc:id="56c18a90-ae43-4079-a824-71a0b0633dcb" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv
+---
+payload map(emp, indexOfEmp)->{
+	"Name" : emp.emp_name,
+	"Age" : emp.emp_age,
+	"Sex" : emp.emp_sex,
+	"Weight" : emp.emp_weight,
+	"Height" : emp.emp_height
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<file:write doc:name="Write" doc:id="037b4945-1659-451a-81d4-0b8a6d29a098" config-ref="File_Config" path='#[vars.inputFileName ++ now() as String {format:"yyyy-mm-dd-hh-mm-ss-SSS"} ++ ".csv"]'/>
+					</batch:aggregator>
+				</batch:step>
+			</batch:process-records>
+		</batch:job>
+	</flow>
+</mule>
